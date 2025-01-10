@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Адресная светодиодная лента</title>
+    <link rel="stylesheet" href="stylish web-page about addressable LED strips.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="#main">Главная</a></li>
+                <li><a href="#features">Состояние моих устройств</a></li>
+                <li><a href="#services">Настройка</a></li>
+                <li><a href="#contact">Контакты</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section id="main">
+            <h1>StripControlPro</h1>
+            <p>Проверка состояния устройств</p>
+        </section>
+        <section id="features">
+            <h2>Подключенные устройства:</h2>
+            <button id="addDeviceButton">Добавить устройство</button>
+            <ul id="deviceList">
+                <!-- Устройства будут добавляться сюда -->
+            </ul>
+        </section>
+        <section id="services">
+            <h2>Конструктор режимов</h2>
+            <div class="mode-controls">
+                <input type="text" id="modeName" placeholder="Название режима">
+                <button id="saveModeButton">Сохранить режим</button>
+            </div>
+            <div class="led-controls">
+                <label for="ledColor">Цвет:</label>
+                <input type="color" id="ledColor">
+                <label for="blinkFrequency">Частота мигания (мс):</label>
+                <input type="number" id="blinkFrequency" min="0">
+                <label for="fadeDuration">Время затухания (мс):</label>
+                <input type="number" id="fadeDuration" min="0">
+                <button id="saveLedButton">Сохранить диод</button>
+                <button id="addLedButton">Добавить диод</button>
+                <button id="deleteLedButton">Удалить диод</button>
+                <button id="repeatLedsButton">Повторить диоды n раз</button>
+                <input type="number" id="repeatCount" min="1" placeholder="n">
+            </div>
+            <div class="led-navigation">
+                <button id="prevLedButton">Предыдущий диод</button>
+                <button id="nextLedButton">Следующий диод</button>
+            </div>
+            <div id="ledModeDisplay">
+                <!-- Режимы будут отображаться здесь -->
+            </div>
+            <div id="ledPreview">
+                <!-- Визуальное отображение диодов -->
+            </div>
+            <div class="saved-modes">
+                <h3>Сохраненные режимы:</h3>
+                <select id="savedModes">
+                    <!-- Сохраненные режимы будут добавляться сюда -->
+                </select>
+                <button id="deleteModeButton">Удалить режим</button>
+            </div>
+        </section>
+        <section id="contact">
+            <h2>Контакты</h2>
+            <ul>
+                <li>
+                    <p>8-912-431-22-02</p>
+                </li>
+                <li>
+                    <p>8-912-431-22-02</p>
+                    <p>AddrLent@mail.ru</p>
+                </li>
+            </ul>
+        </section>
+        <footer>
+            <p>Информация о правах</p>
+        </footer>
+    </main>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/rxjs/7.5.5/rxjs.umd.min.js"></script>
+    <script>
+        const { BehaviorSubject } = rxjs;
+
+        const devicesSubject = new BehaviorSubject([]);
+        const modesSubject = new BehaviorSubject({});
+        const currentModeSubject = new BehaviorSubject(null);
+
+        let currentLedIndex = 0;
+        const leds = [];
+        const modes = {};
+        let deviceCounter = 1;
+        const usedDeviceIds = new Set();
+
+        devicesSubject.subscribe(devices => {
+            const deviceList = document.getElementById('deviceList');
+            deviceList.innerHTML = '';
+            devices.forEach(device => {
+                const listItem = document.createElement('li');
+                listItem.innerHTML = `ID: <input type="text" value="${device.id}" onchange="updateDeviceId(this)">, Status: ${device.status}, Mode: <select onchange="assignMode(this)"><option>No mode assigned</option></select> <button onclick="removeDevice(this)">Удалить</button> <button onclick="saveDeviceName(this)">Сохранить имя</button>`;
+                updateModeSelect(listItem.querySelector('select'));
+                deviceList.appendChild(listItem);
+            });
+        });
+
+        modesSubject.subscribe(modes => {
+            const savedModes = document.getElementById('savedModes');
+            savedModes.innerHTML = '';
+            for (const modeName in modes) {
+                const option = document.createElement('option');
+                option.value = modeName;
+                option.textContent = modeName;
+                savedModes.appendChild(option);
+            }
+            updateModeSelect(document.querySelectorAll('select'));
+        });
+
+        currentModeSubject.subscribe(mode => {
+            if (mode) {
+                document.getElementById('modeName').value = mode.name;
+                leds.length = 0;
+                currentLedIndex = 0;
+                mode.leds.forEach(led => {
+                    leds.push({
+                        color: led.color,
+                        blinkFrequency: led.blinkFrequency,
+                        fadeDuration: led.fadeDuration
+                    });
+                });
+                updateLedDisplay();
+            }
+        });
+
+        document.getElementById('addDeviceButton').addEventListener('click', function() {
+            addDevice();
+        });
+
+        document.getElementById('saveModeButton').addEventListener('click', function() {
+            saveMode();
+        });
+
+        document.getElementById('saveLedButton').addEventListener('click', function() {
+            saveLed();
+        });
+
+        document.getElementById('addLedButton').addEventListener('click', function() {
+            addLed();
+        });
+
+        document.getElementById('deleteLedButton').addEventListener('click', function() {
+            deleteLed();
+        });
+
+        document.getElementById('prevLedButton').addEventListener('click', function() {
+            switchLed(-1);
+        });
+
+        document.getElementById('nextLedButton').addEventListener('click', function() {
+            switchLed(1);
+        });
+
+        document.getElementById('savedModes').addEventListener('change', function() {
+            loadMode();
+        });
+
+        document.getElementById('deleteModeButton').addEventListener('click', function() {
+            deleteMode();
+        });
+
+        document.getElementById('repeatLedsButton').addEventListener('click', function() {
+            repeatLeds();
+        });
+
+        document.getElementById('ledPreview').addEventListener('click', function(event) {
+            if (event.target && event.target.classList.contains('led')) {
+                const index = Array.prototype.indexOf.call(event.target.parentElement.children, event.target);
+                currentLedIndex = index;
+                updateLedDisplay();
+            }
+        });
+
+        // Функция для добавления устройства
+        function addDevice() {
+            let deviceId;
+            do {
+                deviceId = 'Device' + deviceCounter;
+                deviceCounter++;
+            } while (usedDeviceIds.has(deviceId));
+
+            usedDeviceIds.add(deviceId);
+
+            const deviceStatus = 'Active';
+            const deviceMode = 'No mode assigned';
+
+            const devices = devicesSubject.getValue();
+            devices.push({ id: deviceId, status: deviceStatus, mode: deviceMode });
+            devicesSubject.next(devices);
+        }
+
+        // Функция для удаления устройства
+        window.removeDevice = function(button) {
+            const listItem = button.parentElement;
+            const deviceId = listItem.querySelector('input').value;
+            usedDeviceIds.delete(deviceId);
+
+            const devices = devicesSubject.getValue();
+            const updatedDevices = devices.filter(device => device.id !== deviceId);
+            devicesSubject.next(updatedDevices);
+        }
+
+        // Функция для обновления ID устройства
+        window.updateDeviceId = function(input) {
+            const listItem = input.parentElement;
+            const newDeviceId = input.value;
+            usedDeviceIds.delete(listItem.querySelector('input').value);
+            usedDeviceIds.add(newDeviceId);
+
+            const devices = devicesSubject.getValue();
+            const updatedDevices = devices.map(device => {
+                if (device.id === listItem.querySelector('input').value) {
+                    return { ...device, id: newDeviceId };
+                }
+                return device;
+            });
+            devicesSubject.next(updatedDevices);
+        }
+
+        // Функция для сохранения имени устройства
+        window.saveDeviceName = function(button) {
+            const listItem = button.parentElement;
+            const deviceId = listItem.querySelector('input').value;
+            const devices = devicesSubject.getValue();
+            const updatedDevices = devices.map(device => {
+                if (device.id === deviceId) {
+                    return { ...device, id: deviceId };
+                }
+                return device;
+            });
+            devicesSubject.next(updatedDevices);
+            alert(`Имя устройства ${deviceId} сохранено`);
+        }
+
+        // Функция для присваивания режима устройству
+        window.assignMode = function(select) {
+            const listItem = select.parentElement;
+            const deviceId = listItem.querySelector('input').value;
+            const modeName = select.value;
+
+            const devices = devicesSubject.getValue();
+            const updatedDevices = devices.map(device => {
+                if (device.id === deviceId) {
+                    return { ...device, mode: modeName };
+                }
+                return device;
+            });
+            devicesSubject.next(updatedDevices);
+        }
+
+        // Функция для обновления списка режимов в выпадающем списке
+        function updateModeSelect(select) {
+            select.innerHTML = '<option>No mode assigned</option>';
+            for (const modeName in modes) {
+                const option = document.createElement('option');
+                option.value = modeName;
+                option.textContent = modeName;
+                select.appendChild(option);
+            }
+        }
+
+        // Функция для сохранения режима
+        function saveMode() {
+            const modeName = document.getElementById('modeName').value;
+            if (!modeName) {
+                alert('Введите название режима');
+                return;
+            }
+            if (modes[modeName]) {
+                alert('Режим с таким названием уже существует. Придумайте другое название.');
+                return;
+            }
+            const mode = {
+                name: modeName,
+                leds: leds.map(led => ({
+                    color: led.color,
+                    blinkFrequency: led.blinkFrequency,
+                    fadeDuration: led.fadeDuration
+                }))
+            };
+            modes[modeName] = mode;
+            localStorage.setItem(modeName, JSON.stringify(mode));
+            modesSubject.next(modes);
+            alert(`Режим ${modeName} сохранен`);
+        }
+
+        // Функция для добавления сохраненного режима в список
+        function addSavedMode(modeName) {
+            const savedModes = document.getElementById('savedModes');
+            const option = document.createElement('option');
+            option.value = modeName;
+            option.textContent = modeName;
+            savedModes.appendChild(option);
+            updateModeSelect(document.querySelectorAll('select'));
+        }
+
+        // Функция для загрузки режима
+        function loadMode() {
+            const modeName = document.getElementById('savedModes').value;
+            const mode = JSON.parse(localStorage.getItem(modeName));
+            currentModeSubject.next(mode);
+        }
+
+        // Функция для добавления диода
+        function addLed() {
+            const color = document.getElementById('ledColor').value;
+            const blinkFrequency = document.getElementById('blinkFrequency').value;
+            const fadeDuration = document.getElementById('fadeDuration').value;
+            leds.push({ color, blinkFrequency, fadeDuration });
+            currentLedIndex = leds.length - 1;
+            updateLedDisplay();
+        }
+
+        // Функция для сохранения диода
+        function saveLed() {
+            const color = document.getElementById('ledColor').value;
+            const blinkFrequency = document.getElementById('blinkFrequency').value;
+            const fadeDuration = document.getElementById('fadeDuration').value;
+            leds[currentLedIndex] = { color, blinkFrequency, fadeDuration };
+            updateLedDisplay();
+        }
+
+        // Функция для удаления диода
+        function deleteLed() {
+            if (leds.length > 0) {
+                leds.splice(currentLedIndex, 1);
+                if (currentLedIndex >= leds.length) {
+                    currentLedIndex = leds.length - 1;
+                }
+                updateLedDisplay();
+            }
+        }
+
+        // Функция для повторения диодов
+        function repeatLeds() {
+            const repeatCount = parseInt(document.getElementById('repeatCount').value, 10);
+            if (isNaN(repeatCount) || repeatCount < 1) {
+                alert('Введите корректное значение для повторения');
+                return;
+            }
+            const newLeds = leds.slice(0, currentLedIndex + 1).concat(leds.slice(currentLedIndex + 1));
+            for (let i = 0; i < repeatCount - 1; i++) {
+                leds.push(...newLeds);
+            }
+            updateLedDisplay();
+        }
+
+        // Функция для применения режима
+        function applyMode() {
+            const ledPreview = document.getElementById('ledPreview');
+            ledPreview.innerHTML = '';
+            leds.forEach((led, index) => {
+                const ledElement = document.createElement('div');
+                ledElement.className = 'led';
+                ledElement.style.backgroundColor = led.color;
+                ledElement.style.width = '50px';
+                ledElement.style.height = '50px';
+                ledElement.style.margin = '10px';
+                ledElement.style.display = 'inline-block';
+                ledElement.style.animation = `blink ${led.blinkFrequency / 1000}s infinite`;
+                if (index === currentLedIndex) {
+                    ledElement.style.border = '2px solid red';
+                }
+                ledPreview.appendChild(ledElement);
+            });
+        }
+
+        // Функция для переключения между диодами
+        function switchLed(direction) {
+            currentLedIndex += direction;
+            if (currentLedIndex < 0) currentLedIndex = 0;
+            if (currentLedIndex >= leds.length) currentLedIndex = leds.length - 1;
+            updateLedDisplay();
+        }
+
+        // Функция для обновления отображения текущего диода
+        function updateLedDisplay() {
+            if (leds.length > 0) {
+                const led = leds[currentLedIndex];
+                document.getElementById('ledColor').value = led.color;
+                document.getElementById('blinkFrequency').value = led.blinkFrequency;
+                document.getElementById('fadeDuration').value = led.fadeDuration;
+            }
+            applyMode();
+        }
+
+        // Функция для удаления режима
+        function deleteMode() {
+            const modeName = document.getElementById('savedModes').value;
+            if (modeName && modeName !== 'No mode assigned') {
+                delete modes[modeName];
+                localStorage.removeItem(modeName);
+                modesSubject.next(modes);
+                alert(`Режим ${modeName} удален`);
+            }
+        }
+    </script>
+    <style>
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        .led {
+            animation: blink linear infinite;
+        }
+        .mode-controls, .led-controls, .led-navigation, .saved-modes {
+            margin-bottom: 20px;
+        }
+        .mode-controls input, .led-controls input, .saved-modes input {
+            margin-right: 10px;
+        }
+        .mode-controls button, .led-controls button, .led-navigation button, .saved-modes button {
+            margin-left: 10px;
+        }
+    </style>
+</body>
+</html>
